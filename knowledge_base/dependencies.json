@@ -1,0 +1,25 @@
+{
+  "metadata": {
+    "description": "Граф зависимостей между темами для построения траектории обучения"
+  },
+  "prerequisites": {
+    "quadratic_equations": ["linear_equations", "square_roots", "multiplication_polynomials"],
+    "systems_equations": ["linear_equations", "basic_algebra"],
+    "pythagorean_theorem": ["geometry_triangles", "square_roots"],
+    "inequalities": ["linear_equations", "quadratic_equations", "number_line"],
+    "functions": ["coordinate_plane", "equations"],
+    "progressions": ["sequences", "equations"],
+    "trigonometry": ["geometry_triangles", "similarity", "square_roots"],
+    "vectors": ["coordinates", "basic_geometry"],
+    "kinematics": ["speed_acceleration", "basic_algebra"],
+    "dynamics": ["kinematics", "newton_laws", "vectors"],
+    "conservation_laws": ["dynamics", "work_energy_concept"]
+  },
+  "difficulty_progression": {
+    "1": ["basic_arithmetic", "number_line", "basic_geometry"],
+    "2": ["linear_equations", "foiling", "geometry_triangles", "speed_acceleration"],
+    "3": ["quadratic_equations", "systems_equations", "pythagorean_theorem", "functions", "newton_laws", "electric_current"],
+    "4": ["trigonometry", "inequalities_advanced", "dynamics", "conservation_laws"],
+    "5": ["complex_numbers", "integrals", "quantum_physics"]
+  }
+}
