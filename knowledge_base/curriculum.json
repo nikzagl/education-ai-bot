@@ -1,0 +1,50 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "description": "Учебные программы по четвертям"
+  },
+  "by_quarter": {
+    "7": {
+      "Математика": {
+        "quarter1": ["linear_equations", "foiling", "systems_equations"],
+        "quarter2": ["quadratic_equations", "functions_intro"],
+        "quarter3": ["geometry_triangles", "pythagorean_theorem"],
+        "quarter4": ["polygons", "area_formulas"]
+      },
+      "Физика": {
+        "quarter1": ["introduction", "measurements"],
+        "quarter2": ["speed_acceleration", "motion_graphs"],
+        "quarter3": ["newton_laws", "forces"],
+        "quarter4": ["pressure", "archimedes_law"]
+      }
+    },
+    "8": {
+      "Математика": {
+        "quarter1": ["quadratic_advanced", "inequalities"],
+        "quarter2": ["functions", "graph_transformations"],
+        "quarter3": ["quadrilaterals", "area_volume"],
+        "quarter4": ["statistics", "probability_basics"]
+      },
+      "Физика": {
+        "quarter1": ["thermal_phenomena", "heat_transfer"],
+        "quarter2": ["phase_transitions"],
+        "quarter3": ["electric_current", "ohm_law"],
+        "quarter4": ["magnetism", "electromagnetism"]
+      }
+    },
+    "9": {
+      "Математика": {
+        "quarter1": ["progressions", "sequences"],
+        "quarter2": ["trigonometry", "trigonometric_equations"],
+        "quarter3": ["vectors", "coordinates_method"],
+        "quarter4": ["oge_preparation", "revision"]
+      },
+      "Физика": {
+        "quarter1": ["kinematics", "relative_motion"],
+        "quarter2": ["dynamics", "forces_nature"],
+        "quarter3": ["conservation_laws", "work_energy"],
+        "quarter4": ["oscillations", "waves"]
+      }
+    }
+  }
+}

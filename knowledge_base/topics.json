@@ -1,0 +1,335 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "last_updated": "2026-03-05",
+    "source": "ФГОС, школьная программа России",
+    "description": "База знаний для школьного помощника"
+  },
+  "grades": {
+    "7": {
+      "Математика": {
+        "id": "math_7",
+        "display_name": "Математика 7 класс",
+        "description": "Алгебра и геометрия 7 класса",
+        "topics": [
+          {
+            "id": "linear_equations",
+            "name": "Линейные уравнения",
+            "description": "Уравнения вида ax + b = 0, методы решения",
+            "difficulty": 2,
+            "prerequisites": ["basic_arithmetic"],
+            "learning_objectives": [
+              "Понимать, что такое линейное уравнение",
+              "Уметь переносить слагаемые из одной части в другую",
+              "Решать уравнения с одной переменной"
+            ],
+            "common_mistakes": [
+              "Неправильный перенос знаков",
+              "Ошибки в умножении/делении отрицательных чисел",
+              "Потеря корней при сокращении"
+            ],
+            "examples": [
+              "2x + 5 = 13",
+              "3(x - 2) = 15",
+              "4x - 7 = 2x + 5"
+            ],
+            "resources": [
+              "§1-3 учебника алгебры",
+              "Видео: решение линейных уравнений"
+            ]
+          },
+          {
+            "id": "quadratic_equations",
+            "name": "Квадратные уравнения",
+            "description": "Уравнения вида ax² + bx + c = 0",
+            "difficulty": 3,
+            "prerequisites": ["linear_equations", "square_roots", "multiplication_polynomials"],
+            "learning_objectives": [
+              "Понимать структуру квадратного уравнения",
+              "Знать формулу дискриминанта",
+              "Уметь решать уравнения через дискриминант",
+              "Знать теорему Виета"
+            ],
+            "common_mistakes": [
+              "Неправильное вычисление дискриминанта",
+              "Потеря знаков при подстановке в формулу",
+              "Забывают про два корня"
+            ],
+            "examples": [
+              "x² - 5x + 6 = 0",
+              "2x² + 3x - 5 = 0",
+              "x² - 4x + 4 = 0"
+            ],
+            "resources": [
+              "§5-7 учебника алгебры",
+              "Таблица формул сокращенного умножения"
+            ]
+          },
+          {
+            "id": "systems_equations",
+            "name": "Системы уравнений",
+            "description": "Решение систем линейных уравнений",
+            "difficulty": 3,
+            "prerequisites": ["linear_equations", "basic_algebra"],
+            "learning_objectives": [
+              "Понимать, что такое система уравнений",
+              "Уметь решать системы методом подстановки",
+              "Уметь решать системы методом сложения",
+              "Проверять решение подстановкой"
+            ],
+            "common_mistakes": [
+              "Неправильное выражение переменной",
+              "Арифметические ошибки",
+              "Потеря одного из уравнений"
+            ],
+            "examples": [
+              "{ x + y = 10, 2x - y = 5 }",
+              "{ 3x + 2y = 12, x - y = 1 }"
+            ]
+          },
+          {
+            "id": "foiling",
+            "name": "Формулы сокращенного умножения",
+            "description": "(a+b)², (a-b)², a²-b² и другие формулы",
+            "difficulty": 2,
+            "prerequisites": ["multiplication_polynomials"],
+            "learning_objectives": [
+              "Знать основные формулы",
+              "Уметь применять формулы в обе стороны",
+              "Раскладывать выражения на множители"
+            ],
+            "formulas": [
+              "(a + b)² = a² + 2ab + b²",
+              "(a - b)² = a² - 2ab + b²",
+              "a² - b² = (a - b)(a + b)",
+              "(a + b)³ = a³ + 3a²b + 3ab² + b³"
+            ]
+          },
+          {
+            "id": "geometry_triangles",
+            "name": "Треугольники и их свойства",
+            "description": "Виды треугольников, сумма углов, неравенство треугольника",
+            "difficulty": 2,
+            "prerequisites": ["basic_geometry"],
+            "learning_objectives": [
+              "Классифицировать треугольники",
+              "Знать теорему о сумме углов",
+              "Понимать неравенство треугольника"
+            ]
+          },
+          {
+            "id": "pythagorean_theorem",
+            "name": "Теорема Пифагора",
+            "description": "Квадрат гипотенузы равен сумме квадратов катетов",
+            "difficulty": 3,
+            "prerequisites": ["geometry_triangles", "square_roots"],
+            "learning_objectives": [
+              "Знать формулировку теоремы",
+              "Находить неизвестную сторону",
+              "Применять в задачах"
+            ],
+            "examples": [
+              "Катеты 3 и 4, найти гипотенузу",
+              "Гипотенуза 10, катет 6, найти второй катет"
+            ]
+          }
+        ]
+      },
+      "Физика": {
+        "id": "physics_7",
+        "display_name": "Физика 7 класс",
+        "description": "Начальный курс физики",
+        "topics": [
+          {
+            "id": "speed_acceleration",
+            "name": "Скорость и ускорение",
+            "description": "Равномерное и равноускоренное движение",
+            "difficulty": 2,
+            "prerequisites": ["basic_math"],
+            "learning_objectives": [
+              "Понимать разницу между скоростью и ускорением",
+              "Уметь вычислять скорость",
+              "Знать формулы равноускоренного движения"
+            ],
+            "formulas": [
+              "v = s/t",
+              "a = (v - v₀)/t",
+              "s = v₀t + at²/2"
+            ]
+          },
+          {
+            "id": "newton_laws",
+            "name": "Законы Ньютона",
+            "description": "Три закона механики",
+            "difficulty": 3,
+            "prerequisites": ["speed_acceleration", "basic_forces"],
+            "learning_objectives": [
+              "Знать формулировки трех законов",
+              "Понимать связь силы и ускорения",
+              "Применять законы в простых задачах"
+            ]
+          }
+        ]
+      }
+    },
+    "8": {
+      "Математика": {
+        "id": "math_8",
+        "display_name": "Математика 8 класс",
+        "description": "Алгебра и геометрия 8 класса",
+        "topics": [
+          {
+            "id": "quadratic_advanced",
+            "name": "Квадратные уравнения (углубленно)",
+            "description": "Неполные, приведенные, биквадратные уравнения",
+            "difficulty": 3,
+            "prerequisites": ["quadratic_equations"],
+            "learning_objectives": [
+              "Решать неполные квадратные уравнения",
+              "Использовать теорему Виета",
+              "Решать уравнения, сводящиеся к квадратным"
+            ]
+          },
+          {
+            "id": "inequalities",
+            "name": "Неравенства",
+            "description": "Линейные и квадратные неравенства",
+            "difficulty": 3,
+            "prerequisites": ["linear_equations", "quadratic_equations"],
+            "learning_objectives": [
+              "Решать линейные неравенства",
+              "Решать квадратные неравенства методом интервалов",
+              "Изображать решение на числовой прямой"
+            ]
+          },
+          {
+            "id": "functions",
+            "name": "Функции и графики",
+            "description": "Линейная функция, парабола, гипербола",
+            "difficulty": 3,
+            "prerequisites": ["coordinate_plane"],
+            "learning_objectives": [
+              "Понимать, что такое функция",
+              "Строить графики линейной функции",
+              "Строить параболу",
+              "Находить точки пересечения графиков"
+            ]
+          },
+          {
+            "id": "quadrilaterals",
+            "name": "Четырехугольники",
+            "description": "Параллелограмм, прямоугольник, ромб, квадрат",
+            "difficulty": 2,
+            "prerequisites": ["geometry_basics"],
+            "learning_objectives": [
+              "Знать свойства параллелограмма",
+              "Различать виды четырехугольников",
+              "Вычислять площади"
+            ]
+          }
+        ]
+      },
+      "Физика": {
+        "id": "physics_8",
+        "display_name": "Физика 8 класс",
+        "description": "Тепловые и электрические явления",
+        "topics": [
+          {
+            "id": "electric_current",
+            "name": "Электрический ток",
+            "description": "Сила тока, напряжение, сопротивление",
+            "difficulty": 3,
+            "prerequisites": ["basic_physics"],
+            "learning_objectives": [
+              "Понимать природу электрического тока",
+              "Знать закон Ома",
+              "Уметь собирать простые цепи"
+            ],
+            "formulas": [
+              "I = U/R",
+              "P = UI"
+            ]
+          }
+        ]
+      }
+    },
+    "9": {
+      "Математика": {
+        "id": "math_9",
+        "display_name": "Математика 9 класс",
+        "description": "Подготовка к ОГЭ",
+        "topics": [
+          {
+            "id": "progressions",
+            "name": "Прогрессии",
+            "description": "Арифметическая и геометрическая прогрессии",
+            "difficulty": 3,
+            "prerequisites": ["sequences"],
+            "learning_objectives": [
+              "Понимать разницу между прогрессиями",
+              "Находить n-й член прогрессии",
+              "Находить сумму прогрессии"
+            ],
+            "formulas": [
+              "aₙ = a₁ + (n-1)d",
+              "Sₙ = (a₁ + aₙ)n/2",
+              "bₙ = b₁·qⁿ⁻¹"
+            ]
+          },
+          {
+            "id": "trigonometry",
+            "name": "Элементы тригонометрии",
+            "description": "Синус, косинус, тангенс угла",
+            "difficulty": 4,
+            "prerequisites": ["geometry_triangles", "similarity"],
+            "learning_objectives": [
+              "Понимать определения тригонометрических функций",
+              "Знать значения для углов 30°, 45°, 60°",
+              "Применять в задачах"
+            ]
+          },
+          {
+            "id": "vectors",
+            "name": "Векторы",
+            "description": "Понятие вектора, действия с векторами",
+            "difficulty": 3,
+            "prerequisites": ["coordinates"],
+            "learning_objectives": [
+              "Понимать, что такое вектор",
+              "Складывать и вычитать векторы",
+              "Умножать вектор на число"
+            ]
+          }
+        ]
+      },
+      "Физика": {
+        "id": "physics_9",
+        "display_name": "Физика 9 класс",
+        "description": "Механика и законы сохранения",
+        "topics": [
+          {
+            "id": "kinematics",
+            "name": "Кинематика",
+            "description": "Движение тел, относительность движения",
+            "difficulty": 3,
+            "prerequisites": ["speed_acceleration"]
+          },
+          {
+            "id": "dynamics",
+            "name": "Динамика",
+            "description": "Законы Ньютона, силы в природе",
+            "difficulty": 4,
+            "prerequisites": ["kinematics", "newton_laws"]
+          },
+          {
+            "id": "conservation_laws",
+            "name": "Законы сохранения",
+            "description": "Импульс, энергия, работа",
+            "difficulty": 4,
+            "prerequisites": ["dynamics"]
+          }
+        ]
+      }
+    }
+  }
+}
