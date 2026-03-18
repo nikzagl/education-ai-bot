@@ -6,18 +6,20 @@
 import os
 import logging
 import asyncio
+import re
 from typing import Dict, Any
+from pathlib import Path
 
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import ReplyKeyboardRemove
+from aiogram.types import ReplyKeyboardRemove, FSInputFile
 
 from states import StudentState
 from keyboards import *
-from utils import llm, kb, user_manager
+from utils import llm, kb, user_manager, format_question_as_latex, question_to_image, task_to_image, latex_document_to_image
 
 from prompts import *
 
@@ -401,19 +403,53 @@ async def generate_question(message: types.Message, state: FSMContext):
     
     await state.set_state(StudentState.test_answering)
     
-    # Формируем текст вопроса
-    options_text = "\n".join([
-        f"{i+1}. {opt}" for i, opt in enumerate(question_data["options"])
-    ])
+    # Применяем LaTeX форматирование
+    #formatted_question = format_question_as_latex(question_data)
     
-    await message.answer(
-        f"❓ *Вопрос {topic_index + 1} из {len(test_topics)}*\n"
-        f"📌 Тема: {topic_name}\n\n"
-        f"{question_data['question']}\n\n"
-        f"{options_text}\n\n"
-        f"*Выбери номер ответа (1-4)*",
-        parse_mode="Markdown"
+    # Преобразуем вопрос в изображение
+    question_image = question_to_image(
+        question_data,
+        topic=topic_name,
+        topic_index=topic_index,
+        total_topics=len(test_topics)
     )
+    
+    if question_image:
+        try:
+            await message.answer_photo(
+                photo=question_image,
+                caption="❓ Выбери номер ответа (1-4)",
+                reply_markup=get_test_keyboard()
+            )
+        except Exception as e:
+            logger.error(f"Ошибка отправки фото: {e}")
+            # Fallback на текстовое сообщение
+            options_text = "\n".join([
+                f"{i+1}. {opt}" for i, opt in enumerate(question_data["options"])
+            ])
+            await message.answer(
+                f"❓ *Вопрос {topic_index + 1} из {len(test_topics)}*\n"
+                f"📌 Тема: {topic_name}\n\n"
+                f"{question_data['question']}\n\n"
+                f"{options_text}\n\n"
+                f"*Выбери номер ответа (1-4)*",
+                parse_mode="Markdown",
+                reply_markup=get_test_keyboard()
+            )
+    else:
+        # Fallback на текстовое сообщение если не получилось создать изображение
+        options_text = "\n".join([
+            f"{i+1}. {opt}" for i, opt in enumerate(question_data["options"])
+        ])
+        await message.answer(
+            f"❓ *Вопрос {topic_index + 1} из {len(test_topics)}*\n"
+            f"📌 Тема: {topic_name}\n\n"
+            f"{question_data['question']}\n\n"
+            f"{options_text}\n\n"
+            f"*Выбери номер ответа (1-4)*",
+            parse_mode="Markdown",
+            reply_markup=get_test_keyboard()
+        )
 
 
 @dp.message(StudentState.test_answering, lambda m: m.text == "❌ Прервать тест")
@@ -501,22 +537,6 @@ async def finish_test(message: types.Message, state: FSMContext):
         weak_topics=wrong
     )
     
-    # Генерируем рекомендации
-    if wrong:
-        recommendations = llm.ask(
-            RECOMMENDATIONS_PROMPT,
-            system_prompt=TEACHER_SYSTEM_PROMPT,
-            grade=grade,
-            subject=subject,
-            correct_topics=", ".join(correct) if correct else "нет",
-            wrong_topics=", ".join(wrong)
-        )
-        
-        if not recommendations:
-            recommendations = f"Нужно повторить: {', '.join(wrong[:3])}"
-    else:
-        recommendations = "🎉 Отличная работа! Ты знаешь все темы. Можешь попробовать другой предмет или класс."
-    
     # Формируем отчет
     report = (
         f"📊 *Результаты теста*\n\n"
@@ -528,14 +548,49 @@ async def finish_test(message: types.Message, state: FSMContext):
         report += "*Темы для повторения:*\n"
         report += "\n".join([f"• {topic}" for topic in wrong])
         report += "\n\n"
-    
-    report += f"*📝 Рекомендации:*\n{recommendations}"
+    else:
+        report += "🎉 *Отличная работа! Ты знаешь все темы!*\n\n"
     
     await state.set_state(StudentState.showing_results)
     await message.answer(report, parse_mode="Markdown")
     
-    # Предлагаем дальнейшие действия
+    # Если есть ошибки, генерируем рекомендации в LaTeX формате
     if wrong:
+        correct_topics_str = ", ".join(correct) if correct else "нет"
+        wrong_topics_str = ", ".join(wrong)
+        
+        recommendations = llm.ask(
+            RECOMMENDATIONS_PROMPT,
+            system_prompt=TEACHER_SYSTEM_PROMPT,
+            grade=grade,
+            subject=subject,
+            correct_topics=correct_topics_str,
+            wrong_topics=wrong_topics_str
+        )
+        
+        if recommendations:
+            # Отправляем рекомендации в LaTeX формате
+            rec_image = latex_document_to_image(recommendations)
+            
+            if rec_image:
+                try:
+                    await message.answer_photo(
+                        photo=rec_image,
+                        caption="💡 Персональные рекомендации:"
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка отправки рекомендаций: {e}")
+                    await message.answer(
+                        f"💡 *Персональные рекомендации:*\n\n{recommendations}",
+                        parse_mode="Markdown"
+                    )
+            else:
+                await message.answer(
+                    f"💡 *Персональные рекомендации:*\n\n{recommendations}",
+                    parse_mode="Markdown"
+                )
+        
+        # Предлагаем тренировку
         await message.answer(
             "🎯 Хочешь потренироваться на этих темах?",
             reply_markup=get_practice_keyboard()
@@ -590,12 +645,32 @@ async def start_practice(message: types.Message, state: FSMContext):
         )
         
         if task:
-            logger.info(topic)
-            logger.info(task)
-            await message.answer(
-                f"🎯 *Задание {i}: {topic}*\n\n{task}",
-                parse_mode="Markdown"
-            )
+            logger.info(f"Тема: {topic}")
+            logger.info(f"Задача: {task}")
+            
+            # Преобразуем задачу в LaTeX документ и отправляем изображение
+            task_image = latex_document_to_image(task)
+            
+            if task_image:
+                try:
+                    await message.answer_photo(
+                        photo=task_image,
+                        caption=f"🎯 Задание {i}: {topic}",
+                        reply_markup=get_back_to_menu_keyboard()
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка отправки фото задачи: {e}")
+                    # Fallback на текстовое сообщение
+                    await message.answer(
+                        f"🎯 *Задание {i}: {topic}*\n\n{task}",
+                        parse_mode="Markdown"
+                    )
+            else:
+                # Fallback на текстовое сообщение
+                await message.answer(
+                    f"🎯 *Задание {i}: {topic}*\n\n{task}",
+                    parse_mode="Markdown"
+                )
             await asyncio.sleep(1)  # Пауза между задачами
         else:
             await message.answer(
@@ -659,8 +734,8 @@ async def main():
         logger.error("❌ TELEGRAM_BOT_TOKEN не найден в .env")
         return
     
-    if not os.getenv("CEREBRAS_API_KEY"):
-        logger.error("❌ CEREBRAS_API_KEY не найден в .env")
+    if not os.getenv("MISTRAL_API_KEY"):
+        logger.error("❌ MISTRAL_API_KEY не найден в .env")
         return
     
     logger.info("✅ Бот готов к работе!")
