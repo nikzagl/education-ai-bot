@@ -22,6 +22,7 @@ class StudentState(StatesGroup):
     # Состояния тренировки
     practice_generating = State()       # Генерация задач
     practice_showing = State()          # Показ задач
+    practice_answering = State()        # Ожидание ответа на затачу
     
     # Результаты
     showing_results = State()           # Показ результатов

@@ -19,7 +19,9 @@ from aiogram.types import ReplyKeyboardRemove, FSInputFile
 
 from states import StudentState
 from keyboards import *
-from utils import llm, kb, user_manager, format_question_as_latex, question_to_image, task_to_image, latex_document_to_image
+from utils import llm, kb, user_manager
+from image_utils import question_to_image, latex_document_to_image, task_to_image
+from config import MAX_QUESTIONS, MAX_PRACTICE
 
 from prompts import *
 
@@ -27,7 +29,7 @@ load_dotenv()
 
 # Настройка логирования
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -40,6 +42,7 @@ dp = Dispatcher(storage=storage)
 # Константы
 MAX_QUESTIONS = int(os.getenv("MAX_QUESTIONS_PER_TEST", 3))
 MAX_PRACTICE = int(os.getenv("MAX_PRACTICE_TASKS", 3))
+# Базовая преамбула для случаев, когда LaTeX создаётся вручную (не из промпта)
 
 
 # ========== ХЕЛПЕРЫ ==========
@@ -378,7 +381,7 @@ async def generate_question(message: types.Message, state: FSMContext):
     
     question_data = llm.ask_json(
         QUESTION_PROMPT,
-        system_prompt=TEACHER_SYSTEM_PROMPT,
+        system_prompt=SYSTEM_PROMPT,
         topic=topic_name,
         grade=grade,
         subject=subject,
@@ -404,7 +407,7 @@ async def generate_question(message: types.Message, state: FSMContext):
     await state.set_state(StudentState.test_answering)
     
     # Применяем LaTeX форматирование
-    #formatted_question = format_question_as_latex(question_data)
+    
     
     # Преобразуем вопрос в изображение
     question_image = question_to_image(
@@ -413,12 +416,16 @@ async def generate_question(message: types.Message, state: FSMContext):
         topic_index=topic_index,
         total_topics=len(test_topics)
     )
+    print(f"Сгенерирован вопрос по теме: {topic_name}")
     
     if question_image:
         try:
+            # Формируем заголовок для caption
+            caption = f"❓ Вопрос {topic_index + 1} из {len(test_topics)}\n📌 Тема: {topic_name}\n\nВыбери номер ответа (1-4)"
+            
             await message.answer_photo(
                 photo=question_image,
-                caption="❓ Выбери номер ответа (1-4)",
+                caption=caption,
                 reply_markup=get_test_keyboard()
             )
         except Exception as e:
@@ -554,43 +561,8 @@ async def finish_test(message: types.Message, state: FSMContext):
     await state.set_state(StudentState.showing_results)
     await message.answer(report, parse_mode="Markdown")
     
-    # Если есть ошибки, генерируем рекомендации в LaTeX формате
+    # Если есть ошибки, предлагаем тренировку
     if wrong:
-        correct_topics_str = ", ".join(correct) if correct else "нет"
-        wrong_topics_str = ", ".join(wrong)
-        
-        recommendations = llm.ask(
-            RECOMMENDATIONS_PROMPT,
-            system_prompt=TEACHER_SYSTEM_PROMPT,
-            grade=grade,
-            subject=subject,
-            correct_topics=correct_topics_str,
-            wrong_topics=wrong_topics_str
-        )
-        
-        if recommendations:
-            # Отправляем рекомендации в LaTeX формате
-            rec_image = latex_document_to_image(recommendations)
-            
-            if rec_image:
-                try:
-                    await message.answer_photo(
-                        photo=rec_image,
-                        caption="💡 Персональные рекомендации:"
-                    )
-                except Exception as e:
-                    logger.error(f"Ошибка отправки рекомендаций: {e}")
-                    await message.answer(
-                        f"💡 *Персональные рекомендации:*\n\n{recommendations}",
-                        parse_mode="Markdown"
-                    )
-            else:
-                await message.answer(
-                    f"💡 *Персональные рекомендации:*\n\n{recommendations}",
-                    parse_mode="Markdown"
-                )
-        
-        # Предлагаем тренировку
         await message.answer(
             "🎯 Хочешь потренироваться на этих темах?",
             reply_markup=get_practice_keyboard()
@@ -619,70 +591,205 @@ async def start_practice(message: types.Message, state: FSMContext):
         await state.set_state(StudentState.main_menu)
         return
     
-    await state.set_state(StudentState.practice_generating)
-    await message.answer(
-        f"🔮 Генерирую задачи по {min(len(weak_topics), MAX_PRACTICE)} темам...\n"
-        f"Это может занять несколько секунд.",
-        reply_markup=get_back_to_menu_keyboard()
+    # Инициализируем практику
+    practice_topics = weak_topics[:MAX_PRACTICE]
+    await state.update_data(
+        practice_topics=practice_topics,
+        current_practice_index=0,
+        practice_completed=0,
+        practice_skipped=0
     )
     
-    for i, topic in enumerate(weak_topics[:MAX_PRACTICE], 1):
-        grade = data.get("grade")
+    await message.answer(
+        f"🔮 Начинаем тренировку по {len(practice_topics)} темам!\n"
+        f"После каждого неверного ответа я покажу решение."
+    )
+    
+    # Генерируем первое задание
+    await generate_practice_task(message, state)
+
+
+async def generate_practice_task(message: types.Message, state: FSMContext):
+    """Генерирует одно практическое задание"""
+    data = await state.get_data()
+    practice_topics = data.get("practice_topics", [])
+    current_index = data.get("current_practice_index", 0)
+    
+    if current_index >= len(practice_topics):
+        # Завершаем тренировку
+        completed = data.get("practice_completed", 0)
+        skipped = data.get("practice_skipped", 0)
+        await state.set_state(StudentState.main_menu)
+        await message.answer(
+            f"✅ Тренировка завершена!\n\n"
+            f"✓ Решено правильно: {completed}\n"
+            f"⊘ Пропущено: {skipped}",
+            reply_markup=get_main_menu_keyboard()
+        )
+        return
+    
+    topic = practice_topics[current_index]
+    grade = data.get("grade")
+    subject = data.get("subject")
+    
+    # Получаем информацию о теме
+    topic_info = kb.get_topic_by_name(grade, subject, topic)
+    examples = ""
+    if topic_info and topic_info.get("examples"):
+        examples = f"\nПримеры: {', '.join(topic_info['examples'][:2])}"
+    
+    # Генерируем задание (без вариантов ответа!)
+    task = llm.ask(
+        TASK_TRAINING_PROMPT,
+        system_prompt=SYSTEM_PROMPT,
+        topic=topic,
+        grade=grade,
+        subject=subject,
+        examples=examples
+    )
+    
+    if task:
+        logger.info(f"Практическое задание по теме: {topic}")
+        logger.info(f"Задача: {task}")
         
-        # Получаем информацию о теме
-        topic_info = kb.get_topic_by_name(grade, data.get("subject"), topic)
-        
-        examples = ""
-        if topic_info and topic_info.get("examples"):
-            examples = f"\nПримеры: {', '.join(topic_info['examples'][:2])}"
-        
-        task = llm.ask(
-            TASK_PROMPT,
-            system_prompt=TUTOR_SYSTEM_PROMPT,
-            topic=topic,
-            grade=grade,
-            examples=examples
+        # Сохраняем задание для проверки ответа
+        await state.update_data(
+            current_practice_task=task,
+            current_practice_topic=topic
         )
         
-        if task:
-            logger.info(f"Тема: {topic}")
-            logger.info(f"Задача: {task}")
-            
-            # Преобразуем задачу в LaTeX документ и отправляем изображение
-            task_image = latex_document_to_image(task)
-            
+        # Отправляем задание
+        try:
+            task_image = task_to_image(task)
             if task_image:
-                try:
-                    await message.answer_photo(
-                        photo=task_image,
-                        caption=f"🎯 Задание {i}: {topic}",
-                        reply_markup=get_back_to_menu_keyboard()
-                    )
-                except Exception as e:
-                    logger.error(f"Ошибка отправки фото задачи: {e}")
-                    # Fallback на текстовое сообщение
-                    await message.answer(
-                        f"🎯 *Задание {i}: {topic}*\n\n{task}",
-                        parse_mode="Markdown"
-                    )
-            else:
-                # Fallback на текстовое сообщение
-                await message.answer(
-                    f"🎯 *Задание {i}: {topic}*\n\n{task}",
-                    parse_mode="Markdown"
+                await message.answer_photo(
+                    photo=task_image,
+                    caption=f"🎯 Задание {current_index + 1} из {len(practice_topics)}: {topic}\n\n📝 Твой ответ:",
+                    reply_markup=get_back_to_menu_keyboard()
                 )
-            await asyncio.sleep(1)  # Пауза между задачами
-        else:
+            else:
+                await message.answer(
+                    f"🎯 Задание {current_index + 1} из {len(practice_topics)}: {topic}\n\n{task}\n\n📝 Напиши свой ответ:",
+                    parse_mode="Markdown",
+                    reply_markup=get_back_to_menu_keyboard()
+                )
+        except Exception as e:
+            logger.error(f"Ошибка отправки задания: {e}")
             await message.answer(
-                f"❌ Не удалось сгенерировать задание по теме '{topic}'",
-                parse_mode="Markdown"
+                f"🎯 Задание {current_index + 1} из {len(practice_topics)}: {topic}\n\n{task}\n\n📝 Напиши свой ответ:",
+                parse_mode="Markdown",
+                reply_markup=get_back_to_menu_keyboard()
             )
-    
+        
+        # Переходим на ожидание ответа
+        await state.set_state(StudentState.practice_answering)
+    else:
+        await message.answer(f"❌ Не удалось сгенерировать задание по теме '{topic}'. Пропускаю...")
+        await state.update_data(
+            current_practice_index=current_index + 1,
+            practice_skipped=data.get("practice_skipped", 0) + 1
+        )
+        await generate_practice_task(message, state)
+
+
+@dp.message(StudentState.practice_answering, lambda m: m.text == "🏠 Главное меню")
+async def practice_abort(message: types.Message, state: FSMContext):
+    """Пользователь вышел из практики"""
     await state.set_state(StudentState.main_menu)
     await message.answer(
-        "✅ Тренировка закончена! Хочешь пройти тест заново?",
+        "🏠 Главное меню:",
         reply_markup=get_main_menu_keyboard()
     )
+
+
+@dp.message(StudentState.practice_answering)
+async def process_practice_answer(message: types.Message, state: FSMContext):
+    """Обработка ответа на практическое задание"""
+    student_answer = message.text.strip()
+    data = await state.get_data()
+    
+    task_text = data.get("current_practice_task")
+    topic = data.get("current_practice_topic")
+    current_index = data.get("current_practice_index", 0)
+    practice_topics = data.get("practice_topics", [])
+    
+    if not task_text or not topic:
+        await message.answer("❌ Ошибка. Начинаем заново.")
+        await state.set_state(StudentState.main_menu)
+        await start_practice(message, state)
+        return
+    
+    # Проверяем ответ через LLM
+    check_prompt = f"""Ученик решал задачу и дал ответ.
+
+Задача:
+{task_text}
+
+Ответ ученика:
+{student_answer}
+
+Проверь, правильный ли ответ. Просто ответь одним словом:
+- "ПРАВИЛЬНО" если решение верное
+- "НЕПРАВИЛЬНО" если решение неверное или неполное"""
+    
+    check_result = llm.ask(
+        check_prompt,
+        system_prompt=SYSTEM_PROMPT
+    )
+    
+    is_correct = check_result and "НЕПРАВИЛЬНО" not in check_result.upper()
+    
+    if is_correct:
+        await message.answer(f"✅ *Правильно!*\n\nМолодец! Переходим к следующему заданию.", parse_mode="Markdown")
+        await state.update_data(
+            current_practice_index=current_index + 1,
+            practice_completed=data.get("practice_completed", 0) + 1
+        )
+    else:
+        await message.answer(
+            f"❌ Не совсем правильно...\n\n"
+            f"Сейчас покажу решение 👇",
+            parse_mode="Markdown"
+        )
+        
+        # Генерируем решение
+        solution = llm.ask(
+            SOLUTION_GENERATION_PROMPT,
+            system_prompt=SYSTEM_PROMPT,
+            task_text=task_text
+        )
+        
+        if solution:
+            logger.info(f"Решение для задачи '{topic}': {solution}")
+            try:
+                solution_image = latex_document_to_image(solution)
+                if solution_image:
+                    await message.answer_photo(
+                        photo=solution_image,
+                        caption="📚 Вот как нужно решать:"
+                    )
+                else:
+                    await message.answer(
+                        f"📚 *Вот как нужно решать:*\n\n{solution}",
+                        parse_mode="Markdown"
+                    )
+            except Exception as e:
+                logger.error(f"Ошибка отправки решения: {e}")
+                await message.answer(
+                    f"📚 *Вот как нужно решать:*\n\n{solution}",
+                    parse_mode="Markdown"
+                )
+            
+            await asyncio.sleep(1)
+        
+        # Переходим к следующему заданию
+        await state.update_data(
+            current_practice_index=current_index + 1
+        )
+    
+    # Генерируем следующее задание
+    await asyncio.sleep(1)
+    await generate_practice_task(message, state)
 
 
 @dp.message(StudentState.showing_results, lambda m: m.text == "📝 Пройти тест заново")
@@ -694,6 +801,7 @@ async def restart_test(message: types.Message, state: FSMContext):
 @dp.message(StudentState.showing_results, lambda m: m.text == "🏠 Главное меню")
 @dp.message(StudentState.practice_generating, lambda m: m.text == "🏠 Главное меню")
 @dp.message(StudentState.practice_showing, lambda m: m.text == "🏠 Главное меню")
+@dp.message(StudentState.practice_answering, lambda m: m.text == "🏠 Главное меню")
 async def back_to_main_menu(message: types.Message, state: FSMContext):
     """Возврат в главное меню"""
     await state.set_state(StudentState.main_menu)
