@@ -4,22 +4,59 @@
 
 import json
 import os
+import logging
 from pathlib import Path
 from typing import Dict, List, Any, Optional
-from datetime import datetime
+import re
 
-from cerebras.cloud.sdk import Cerebras
+from pydantic import BaseModel, Field
+from mistralai.client import Mistral
 from dotenv import load_dotenv
 
-from prompts import (
-    QUESTION_PROMPT, 
-    TASK_PROMPT, 
-    RECOMMENDATIONS_PROMPT,
-    TEACHER_SYSTEM_PROMPT,
-    TUTOR_SYSTEM_PROMPT
+from config import (
+    MISTRAL_API_KEY, LLM_MODEL, LLM_TEMPERATURE, 
+    LLM_MAX_TOKENS,
+     KB_BASE_PATH
 )
 
+from prompts import SYSTEM_PROMPT
+
+from user_manager import UserDataManager
+
+
+try:
+    from langchain_mistralai import ChatMistralAI
+    from langchain_core.prompts import ChatPromptTemplate
+    LANGCHAIN_AVAILABLE = True
+except ImportError:
+    LANGCHAIN_AVAILABLE = False
+    print("⚠️ langchain не установлен, используется прямое API Mistral")
+
 load_dotenv()
+
+# Настройка логирования для отладки
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Создаем обработчик для вывода на консоль
+if not logger.handlers:
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+
+# ========== PYDANTIC MODELS FOR STRUCTURED OUTPUT ==========
+
+class QuestionAnswer(BaseModel):
+    """Модель для структурированного вопроса с вариантами ответов"""
+    question: str = Field(..., description="Текст вопроса с LaTeX формулами")
+    options: List[str] = Field(..., description="Список из 4 вариантов ответа")
+    correct: int = Field(..., description="Индекс правильного ответа (0, 1, 2 или 3)")
 
 
 class KnowledgeBase:
@@ -27,7 +64,7 @@ class KnowledgeBase:
     Класс для работы с базой знаний в JSON
     """
     
-    def __init__(self, base_path: str = "knowledge_base"):
+    def __init__(self, base_path: str = KB_BASE_PATH):
         self.base_path = Path(base_path)
         self.topics = self._load_json("topics.json")
         self.curriculum = self._load_json("curriculum.json")
@@ -131,12 +168,25 @@ class KnowledgeBase:
 
 class SimpleLLM:
     """
-    Простой класс для работы с LLM
+    Класс для работы с LLM через langchain и Mistral AI
     """
     
     def __init__(self):
-        self.client = Cerebras(api_key=os.getenv("CEREBRAS_API_KEY"))
-        self.model = "gpt-oss-120b"
+        api_key = MISTRAL_API_KEY or os.getenv("MISTRAL_API_KEY")
+        if not api_key:
+            raise ValueError("❌ MISTRAL_API_KEY не найден в переменных окружения")
+        
+        if LANGCHAIN_AVAILABLE:
+            self.llm = ChatMistralAI(
+                model=LLM_MODEL,
+                api_key=api_key,
+                temperature=LLM_TEMPERATURE,
+                max_tokens=LLM_MAX_TOKENS
+            )
+            self.use_langchain = True
+        else:
+            self.client = Mistral(api_key=api_key)
+            self.use_langchain = False
         self.kb = KnowledgeBase()
     
     def ask(self, prompt: str, system_prompt: Optional[str] = None, **kwargs) -> Optional[str]:
@@ -148,140 +198,214 @@ class SimpleLLM:
             try:
                 prompt = prompt.format(**kwargs)
             except KeyError as e:
-                print(f"⚠️ Отсутствует параметр в промпте: {e}")
+                logger.error(f"Отсутствует параметр в промпте: {e}")
+                return None
             except Exception as e:
-                print(f"⚠️ Ошибка форматирования промпта: {e}")
+                logger.error(f"Ошибка форматирования промпта: {e}")
+                return None
         
-        system = system_prompt or TEACHER_SYSTEM_PROMPT
+        system = system_prompt or SYSTEM_PROMPT
+        
+        logger.debug(f"\n{'='*80}")
+        logger.debug(f"📨 LLM REQUEST (ask)")
+        logger.debug(f"{'='*80}")
+        logger.debug(f"System Prompt:\n{system}")
+        logger.debug(f"\nUser Prompt:\n{prompt}")
+        logger.debug(f"{'='*80}\n")
         
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
+            if self.use_langchain:
+                logger.debug("Using LangChain with ChatMistralAI")
+                # Создаем prompt template с системным промптом
+                prompt_template = ChatPromptTemplate.from_messages([
+                    ("system", system),
+                    ("user", "{input}")
+                ])
+                
+                # Создаем цепь
+                chain = prompt_template | self.llm
+                
+                # Выполняем запрос
+                response = chain.invoke({"input": prompt})
+                response_text = response.content if hasattr(response, 'content') else str(response)
+                logger.debug(f"✅ Response received (LangChain)\n{response_text[:500]}...")
+                return response_text
+            else:
+                logger.debug("Using direct Mistral API")
+                # Используем прямое API Mistral
+                messages = [
                     {"role": "system", "content": system},
                     {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                max_tokens=1000
-            )
-            return response.choices[0].message.content
+                ]
+                response = self.client.chat(
+                    model=LLM_MODEL,
+                    messages=messages,
+                    temperature=LLM_TEMPERATURE,
+                    max_tokens=LLM_MAX_TOKENS
+                )
+                response_text = response.choices[0].message.content
+                logger.debug(f"✅ Response received (Mistral API)\n{response_text[:500]}...")
+                return response_text
         except Exception as e:
-            print(f"Ошибка LLM: {e}")
+            logger.error(f"❌ LLM Error in ask(): {e}", exc_info=True)
             return None
     
-    def ask_json(self, prompt: str, system_prompt: Optional[str] = None, **kwargs) -> Optional[Dict]:
+    def ask_json(self, prompt: str, system_prompt: Optional[str] = None, pydantic_model: Optional[type] = None, **kwargs) -> Optional[Dict]:
         """
-        Запрос с гарантией JSON-ответа
+        Запрос с гарантией структурированного JSON-ответа используя Pydantic модели
         """
         # Подставляем параметры
         if kwargs:
             try:
                 prompt = prompt.format(**kwargs)
             except KeyError as e:
-                print(f"⚠️ Отсутствует параметр в промпте: {e}")
+                logger.error(f"Отсутствует параметр в промпте: {e}")
+                return None
             except Exception as e:
-                print(f"⚠️ Ошибка форматирования промпта: {e}")
+                logger.error(f"Ошибка форматирования промпта: {e}")
+                return None
         
-        system = system_prompt or TEACHER_SYSTEM_PROMPT
-        system += " Отвечай строго в формате JSON, без пояснений."
+        system = system_prompt or SYSTEM_PROMPT
+        model = pydantic_model or QuestionAnswer
+        
+        logger.debug(f"\n{'='*80}")
+        logger.debug(f"📨 LLM REQUEST (ask_json)")
+        logger.debug(f"{'='*80}")
+        logger.debug(f"Pydantic Model: {model.__name__}")
+        logger.debug(f"System Prompt:\n{system}")
+        logger.debug(f"\nUser Prompt:\n{prompt}")
+        logger.debug(f"{'='*80}\n")
         
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                response_format={"type": "json_object"},
-                max_tokens=1000
-            )
-            return json.loads(response.choices[0].message.content)
+            if self.use_langchain and LANGCHAIN_AVAILABLE:
+                logger.debug("Using LangChain with structured output (Pydantic)")
+                # Используем LangChain с Pydantic структурированием
+                structured_llm = self.llm.with_structured_output(model)
+                
+                # Создаем prompt template с системным промптом
+                prompt_template = ChatPromptTemplate.from_messages([
+                    ("system", system),
+                    ("user", "{input}")
+                ])
+                
+                # Создаем цепь с Pydantic парсером
+                chain = prompt_template | structured_llm
+                
+                try:
+                    # Выполняем запрос с структурированным выводом
+                    response = chain.invoke({"input": prompt})
+                    logger.debug(f"Raw response type: {type(response)}")
+                    
+                    # Если response это объект Pydantic модели, преобразуем в dict
+                    if isinstance(response, BaseModel):
+                        result = response.model_dump()
+                        logger.debug(f"✅ Pydantic validation successful\nResult: {result}")
+                        return result
+                    elif isinstance(response, dict):
+                        logger.debug(f"✅ Dict response received\nResult: {response}")
+                        return response
+                    else:
+                        logger.error(f"Неожиданный тип ответа: {type(response)}")
+                        return None
+                        
+                except Exception as e:
+                    logger.warning(f"LangChain structured output failed: {e}\nFalling back to JSON parsing...")
+                    # Fallback на старый метод парсинга JSON
+                    return self._fallback_json_parse(prompt, system)
+            else:
+                logger.debug("Using direct Mistral API with Pydantic validation")
+                # Используем прямое API Mistral с Pydantic парсингом
+                return self._mistral_direct_json(prompt, system, model)
+                
         except Exception as e:
-            print(f"Ошибка JSON LLM: {e}")
+            logger.error(f"❌ LLM Error in ask_json(): {e}", exc_info=True)
             return None
-
-
-class UserDataManager:
-    """
-    Менеджер данных пользователей (в памяти)
-    В реальном проекте заменить на БД
-    """
     
-    def __init__(self):
-        self.users = {}  # user_id -> profile
+    def _mistral_direct_json(self, prompt: str, system: str, model: type) -> Optional[Dict]:
+        """
+        Использует прямое Mistral API с Pydantic парсингом JSON
+        """
+        try:
+            logger.debug(f"\n{'='*80}")
+            logger.debug(f"📨 Direct Mistral JSON Request")
+            logger.debug(f"{'='*80}")
+            
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt}
+            ]
+            response = self.client.chat(
+                model=LLM_MODEL,
+                messages=messages,
+                temperature=LLM_TEMPERATURE,
+                max_tokens=LLM_MAX_TOKENS
+            )
+            response_text = response.choices[0].message.content
+            logger.debug(f"📥 Raw response from Mistral:\n{response_text}")
+            
+            # Пытаемся распарсить JSON с Pydantic валидацией
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
+                json_str = json_match.group()
+                logger.debug(f"📦 Extracted JSON:\n{json_str}")
+                json_data = json.loads(json_str)
+            else:
+                json_data = json.loads(response_text)
+            
+            logger.debug(f"✅ JSON parsed successfully")
+            
+            # Валидируем через Pydantic модель
+            validated = model(**json_data)
+            result = validated.model_dump()
+            logger.debug(f"✅ Pydantic validation successful\nResult: {result}")
+            return result
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ JSON parsing error: {e}\nResponse was: {response_text[:300] if 'response_text' in locals() else 'N/A'}")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Error in _mistral_direct_json(): {e}", exc_info=True)
+            return None
     
-    def get_user(self, user_id: int) -> Dict:
-        """Получает профиль пользователя"""
-        if user_id not in self.users:
-            self.users[user_id] = {
-                "username": None,
-                "grade": None,
-                "subject": None,
-                "test_history": [],
-                "created_at": datetime.now().isoformat(),
-                "total_tests": 0,
-                "total_correct": 0,
-                "total_questions": 0
-            }
-        return self.users[user_id]
-    
-    def update_user(self, user_id: int, **kwargs):
-        """Обновляет данные пользователя"""
-        user = self.get_user(user_id)
-        user.update(kwargs)
-    
-    def add_test_result(self, user_id: int, grade: int, subject: str, 
-                        correct: int, total: int, weak_topics: List[str]):
-        """Добавляет результат теста в историю"""
-        user = self.get_user(user_id)
-        
-        test_result = {
-            "grade": grade,
-            "subject": subject,
-            "correct": correct,
-            "total": total,
-            "weak_topics": weak_topics,
-            "date": datetime.now().isoformat()
-        }
-        
-        user["test_history"].append(test_result)
-        user["total_tests"] += 1
-        user["total_correct"] += correct
-        user["total_questions"] += total
-        
-        # Ограничиваем историю
-        if len(user["test_history"]) > 20:
-            user["test_history"] = user["test_history"][-20:]
-    
-    def get_statistics(self, user_id: int) -> Dict:
-        """Возвращает статистику пользователя"""
-        user = self.get_user(user_id)
-        
-        if not user["test_history"]:
-            return {"message": "Пока нет пройденных тестов"}
-        
-        success_rate = 0
-        if user["total_questions"] > 0:
-            success_rate = round(user["total_correct"] / user["total_questions"] * 100)
-        
-        # Собираем все слабые темы
-        all_weak_topics = []
-        for test in user["test_history"]:
-            all_weak_topics.extend(test["weak_topics"])
-        
-        from collections import Counter
-        weak_topics_counter = Counter(all_weak_topics)
-        top_weak = weak_topics_counter.most_common(5)
-        
-        return {
-            "total_tests": user["total_tests"],
-            "total_questions": user["total_questions"],
-            "total_correct": user["total_correct"],
-            "success_rate": success_rate,
-            "top_weak_topics": top_weak,
-            "last_test": user["test_history"][-1] if user["test_history"] else None
-        }
+    def _fallback_json_parse(self, prompt: str, system: str) -> Optional[Dict]:
+        """
+        Fallback для парсинга JSON без Pydantic структурирования
+        """
+        try:
+            logger.debug(f"\n{'='*80}")
+            logger.debug(f"📨 Fallback JSON Parse (no Pydantic)")
+            logger.debug(f"{'='*80}")
+            
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt}
+            ]
+            response = self.client.chat(
+                model=LLM_MODEL,
+                messages=messages,
+                temperature=LLM_TEMPERATURE,
+                max_tokens=LLM_MAX_TOKENS
+            )
+            response_text = response.choices[0].message.content
+            logger.debug(f"📥 Raw response:\n{response_text}")
+            
+            # Ищем JSON в ответе
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
+                json_str = json_match.group()
+                logger.debug(f"📦 Extracted JSON:\n{json_str}")
+                result = json.loads(json_str)
+            else:
+                result = json.loads(response_text)
+            
+            logger.debug(f"✅ JSON parsed successfully\nResult: {result}")
+            return result
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ JSON parsing error: {e}\nResponse: {response_text[:300] if 'response_text' in locals() else 'N/A'}")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Error in _fallback_json_parse(): {e}", exc_info=True)
+            return None
 
 
 # Создаем глобальные экземпляры

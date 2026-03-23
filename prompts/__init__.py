@@ -21,6 +21,7 @@ def load_prompt(filename: str) -> str:
 # Загружаем все промпты при импорте
 QUESTION_PROMPT = load_prompt("question_generation.txt")
 TASK_PROMPT = load_prompt("task_generation.txt")
-RECOMMENDATIONS_PROMPT = load_prompt("recommendations.txt")
-TEACHER_SYSTEM_PROMPT = load_prompt("system/teacher.txt")
-TUTOR_SYSTEM_PROMPT = load_prompt("system/tutor.txt")
+TASK_TRAINING_PROMPT = load_prompt("task_training.txt")
+SOLUTION_GENERATION_PROMPT = load_prompt("solution_generation.txt")
+LATEX_CORRECTION_PROMPT = load_prompt("latex_correction.txt")
+SYSTEM_PROMPT = load_prompt("system.txt")
